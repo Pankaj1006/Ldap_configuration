@@ -13,10 +13,15 @@ Pre-requisite:
 			https://www.server-world.info/en/note?os=CentOS_7&p=openldap&f=2
 			https://www.server-world.info/en/note?os=CentOS_7&p=openldap&f=3
 
+Multi-master configuration reference link:1) https://www.golinuxcloud.com/multi-master-replication-openldap/
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 2) https://www.golinuxcloud.com/install-configure-openldap-rocky-linux-8/
+							3) https://www.golinuxcloud.com/ldap-client-rhel-centos-8/
+			
+
 
 [1]	Install OpenLDAP Server:
 ------------------------------
-#yum -y install openldap-servers openldap-clients
+# yum -y install openldap-servers openldap-clients
 
 # cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
 
