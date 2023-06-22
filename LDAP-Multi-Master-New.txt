@@ -1,0 +1,293 @@
+Step1
+
+[root@master1 ~]# hostname
+master1.cdac.in
+
+
+[root@master1 ~]# cat /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+10.10.10.2      master1 cdac.in
+10.10.10.3      master2 cdac.in
+
+[root@master2 ~]# hostname
+master2.cdac.in
+
+[root@master2 ~]# cat /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+10.10.10.2      master1 master1.cdac.in
+10.10.10.3      master2 master2.cdac.in
+
+
+
+# yum -y install openldap compat-openldap openldap-clients openldap-servers openldap-servers-sql openldap-devel
+
+systemctl start slapd
+systemctl enable slapd
+
+install client on master1 and master2 and client:
+
+# yum install -y openldap-clients nss-pam-ldapd
+
+systemctl start nslcd
+
+=============================================
+
+Step2:  Configure syslog to enable LDAP logging.
+
+echo "local4.* /var/log/ldap.log" >> /etc/rsyslog.conf
+systemctl restart rsyslog
+
+=============================================
+
+Step3: We will enable the syncprov module.
+
+vi syncprov_mod.ldif
+
+=============================================
+dn: cn=module,cn=config
+objectClass: olcModuleList
+cn: module
+olcModulePath: /usr/lib64/openldap
+olcModuleLoad: syncprov.la
+=============================================
+
+Now send the configuration to the LDAP server.
+
+#ldapadd -Y EXTERNAL -H ldapi:/// -f syncprov_mod.ldif
+===============================================================================================
+
+Step4 : Enable Config Replication, Change the olcServerID on all servers.
+
+vi olcserverid.ldif
+
+=============================================
+dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 1    Note:-> Change ID on master 2
+=============================================
+
+Update the configuration on LDAP server.
+
+#ldapmodify -Y EXTERNAL -H ldapi:/// -f olcserverid.ldif
+===============================================================================================
+
+
+Step5: We need to generate a password for LDAP configuration replication.
+
+# slappasswd
+
+Set a password for configuration database.
+
+vi olcdatabase.ldif
+
+=============================================
+dn: olcDatabase={0}config,cn=config
+add: olcRootPW
+olcRootPW: {SSHA}BwRwDaOTvGd6/l7ruixPRn59T8dqWAAd
+=============================================
+
+Update the configuration on LDAP server.
+
+#ldapmodify -Y EXTERNAL -H ldapi:/// -f olcdatabase.ldif
+===============================================================================================
+
+
+Step6:
+
+Now we will set up the configuration replication on all servers.
+
+vi configrep.ldif
+
+=============================================
+### Update Server ID with LDAP URL ###
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 1 ldap://master1
+olcServerID: 2 ldap://master2
+
+### Enable Config Replication###
+dn: olcOverlay=syncprov,olcDatabase={0}config,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+
+### Adding config details for confDB replication ###
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcSyncRepl
+olcSyncRepl: rid=001 provider=ldap://master1 binddn="cn=config"
+  bindmethod=simple credentials=hpcsa searchbase="cn=config"					credentials means the password which we have generated for slappasswd
+  type=refreshAndPersist retry="5 5 300 5" timeout=1
+olcSyncRepl: rid=002 provider=ldap://master2 binddn="cn=config"
+  bindmethod=simple credentials=hpcsa searchbase="cn=config"
+  type=refreshAndPersist retry="5 5 300 5" timeout=1
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+=============================================
+
+Now send the configuration to the LDAP server.
+
+# ldapmodify -Y EXTERNAL -H ldapi:/// -f configrep.ldif
+
+===============================================================================================
+
+
+
+
+
+
+
+*****************************************************************************************************************
+
+
+Enable Database Replication: By this time, all your LDAP configurations are replicated. Now, we will enable the replication of actual data, i.e., user database. 
+Perform below steps on any one of the nodes since the other nodes are in replication.
+
+Below steps on Master1 Node
+
+We would need to enable syncprov for hdb database.
+
+vi syncprov.ldif
+=============================================
+dn: olcOverlay=syncprov,olcDatabase={2}hdb,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+=============================================
+
+
+Update the configuration on LDAP server.
+
+#ldapmodify -Y EXTERNAL -H ldapi:/// -f syncprov.ldif
+===============================================================================================
+
+
+Setup replication for hdb database.
+
+vi olcdatabasehdb.ldif
+=============================================
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=cdac,dc=in
+-
+replace: olcRootDN
+olcRootDN: cn=Manager,dc=cdac,dc=in
+-
+replace: olcRootPW
+olcRootPW: {SSHA}A74dhT1IUeztKLlsfk9NbYIlxsUUxUQg
+-
+add: olcSyncRepl
+olcSyncRepl: rid=003 provider=ldap://master1 binddn="cn=Manager,dc=cdac,dc=in" bindmethod=simple
+  credentials=root searchbase="dc=cdac,dc=in" type=refreshOnly
+  interval=00:00:00:10 retry="5 5 300 5" timeout=1
+olcSyncRepl: rid=004 provider=ldap://master2 binddn="cn=Manager,dc=cdac,dc=in" bindmethod=simple
+  credentials=root searchbase="dc=cdac,dc=in" type=refreshOnly
+  interval=00:00:00:10 retry="5 5 300 5" timeout=1
+-
+add: olcDbIndex
+olcDbIndex: entryUUID  eq
+-
+add: olcDbIndex
+olcDbIndex: entryCSN  eq
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+=============================================
+
+Once you have updated the file, send the configuration to the LDAP server.
+
+
+ldapmodify -Y EXTERNAL  -H ldapi:/// -f olcdatabasehdb.ldif
+===============================================================================================
+
+# vi monitor.ldif
+=============================================
+dn: olcDatabase={1}monitor,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external, cn=auth" read by dn.base="cn=ldapadm,dc=cdac,dc=in" read by * none
+=============================================
+
+Once you have updated the file, send the configuration to the LDAP server.
+
+ldapmodify -Y EXTERNAL  -H ldapi:/// -f monitor.ldif
+===============================================================================================
+
+Add the LDAP schemas.
+
+ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/cosine.ldif
+ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/nis.ldif 
+ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/inetorgperson.ldif
+===============================================================================================
+
+Generate base.ldif file for your domain.
+
+vi base.ldif
+=============================================
+dn: dc=cdac,dc=in
+dc: cdac
+objectClass: top
+objectClass: domain
+
+dn: cn=Manager,dc=cdac,dc=in
+objectClass: organizationalRole
+cn: Manager
+description: LDAP Manager
+
+dn: ou=People,dc=cdac,dc=in
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Group,dc=cdac,dc=in
+objectClass: organizationalUnit
+ou: Group
+=============================================
+
+Build the directory structure.
+
+#ldapadd -x -W -D "cn=manager,dc=cdac,dc=in" -f base.ldif
+===============================================================================================
+
+
+Let’s create a user LDAP called test in any one of your master servers, to do that, create a users.ldif file on master1
+
+vi users.ldif
+=============================================
+dn: uid=test1,ou=People,dc=cdac,dc=in
+objectClass: top
+objectClass: account
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: manager
+uid: test1
+uidNumber: 9988
+gidNumber: 100
+homeDirectory: /home/test1
+loginShell: /bin/bash
+gecos: LDAP Replication Test User
+userPassword: hpcsa
+shadowLastChange: 17058
+shadowMin: 0
+shadowMax: 99999
+shadowWarning: 7
+=============================================
+
+ldapadd -x -W -D "cn=manager,dc=cdac,dc=in" -f users.ldif
+
+
+===============================================================================================
+
+# authconfig --enableldap --enableldapauth --ldapserver=10.208.35.75,10.208.34.88 --ldapbasedn="dc=cdac,dc=in" --enablemkhomedir --update
+
+#getent passwd
+
+# ldapsearch -x
+===============================================================================================

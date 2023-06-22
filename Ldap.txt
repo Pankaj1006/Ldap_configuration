@@ -1,12 +1,12 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-LDAP (light weight directory access protocol)
+LDAP (lightweight directory access protocol)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Pre-requisite:
 
 01: Configure two VM (Master and Client Node)
 02: Firewall disable 
-03: SElinux disable
+03: SELinux disable
 04: /etc/host file entry
 
 *Reference link: https://www.server-world.info/en/note?os=CentOS_7&p=openldap
@@ -39,8 +39,7 @@ Multi-master configuration reference link:1) https://www.golinuxcloud.com/multi-
 # slappasswd
 New password:
 Re-enter new password:
-{SSHA}xxxxxxxxxxxxxxxxxxxxxxxx
-
+{SSHA}lTayDW4ojW/vVnAmJmauQraf0z74F40n		master1
 
 # vi chrootpw.ldif
 
@@ -49,7 +48,7 @@ Re-enter new password:
 dn: olcDatabase={0}config,cn=config
 changetype: modify
 add: olcRootPW
-olcRootPW: {SSHA}xxxxxxxxxxxxxxxxxxxxxxxx
+olcRootPW: {SSHA}+H97vwtNtC5hYkrAXTGbtknGeoEaXxM+	master2
 
 # ldapadd -Y EXTERNAL -H ldapi:/// -f chrootpw.ldif
 
@@ -78,7 +77,7 @@ SASL SSF: 0
 adding new entry "cn=nis,cn=schema,cn=config"
 
 
-# ldapadd -Y SASL/EXTERNAL authentication started
+# ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/inetorgperson.ldif
 
 SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth
 SASL SSF: 0
@@ -96,22 +95,22 @@ replace: olcAccess
 olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
   read by dn.base="cn=Manager,dc=cdac,dc=in" read by * none
 
-dn: olcDatabase={2}mdb,cn=config
+dn: olcDatabase={2}hdb,cn=config
 changetype: modify
 replace: olcSuffix
 olcSuffix: dc=cdac,dc=in
 
-dn: olcDatabase={2}mdb,cn=config
+dn: olcDatabase={2}hdb,cn=config
 changetype: modify
 replace: olcRootDN
 olcRootDN: cn=Manager,dc=cdac,dc=in
 
-dn: olcDatabase={2}mdb,cn=config
+dn: olcDatabase={2}hdb,cn=config
 changetype: modify
 add: olcRootPW
-olcRootPW:SHA}P7aFum2pErtqJq9d9tO/gZBBehrP4V2l
+olcRootPW: {SSHA}USvNbWRHjkyfKHNgDZXWAHDgNKHQ9C5X
 
-dn: olcDatabase={2}mdb,cn=config
+dn: olcDatabase={2}hdb,cn=config
 changetype: modify
 add: olcAccess
 olcAccess: {0}to attrs=userPassword,shadowLastChange by
